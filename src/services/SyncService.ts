@@ -50,7 +50,13 @@ class SyncService {
       await this.syncNotes();
       await this.syncConversations();
       await this.syncTranscriptions();
-      await this.syncDictionary();
+      // Drain dictionaryDirty: edits made during the awaits above set the flag
+      // (syncing is already true), so re-run until clean rather than letting
+      // them stall until the next manual trigger.
+      do {
+        this.dictionaryDirty = false;
+        await this.syncDictionary();
+      } while (this.dictionaryDirty);
       localStorage.setItem("lastSyncedAt", new Date().toISOString());
     } catch (err) {
       console.error("Sync failed:", err);
@@ -627,25 +633,41 @@ class SyncService {
   }
 
   private async syncDictionary(): Promise<void> {
+    // Fail loud if any dictionary IPC binding is missing (preload/renderer
+    // version skew). A silent no-op via optional chaining would lose user data
+    // without any signal, so assert the whole surface up front — the helpers
+    // below then rely on every binding being present.
+    const api = window.electronAPI;
+    const required = [
+      "getPendingDictionary",
+      "getPendingDictionaryDeletes",
+      "getDictionaryByClientId",
+      "upsertDictionaryFromCloud",
+      "markDictionarySynced",
+      "hardDeleteDictionary",
+      "clearDictionaryCloudId",
+      "broadcastDictionaryUpdated",
+    ] as const;
+    const missing = required.filter((name) => typeof api[name] !== "function");
+    if (missing.length > 0) {
+      throw new Error(
+        `Dictionary IPC bindings missing — preload out of date: ${missing.join(", ")}`
+      );
+    }
+
     await this.pushPendingDictionary();
     await this.pushDictionaryDeletes();
     await this.pullDictionary();
   }
 
   private async pushPendingDictionary(): Promise<void> {
-    // Require the IPC bindings to be present. Silent no-op via optional
-    // chaining would otherwise mean a preload/renderer version skew loses
-    // user data without any error signal.
-    if (!window.electronAPI.getPendingDictionary) {
-      throw new Error("Dictionary IPC bindings missing — preload out of date");
-    }
-    const pending = (await window.electronAPI.getPendingDictionary()) ?? [];
+    const pending = (await window.electronAPI.getPendingDictionary?.()) ?? [];
     if (pending.length === 0) return;
 
-    const migration = pending.filter((e) => e.cloud_id);
-    const fresh = pending.filter((e) => !e.cloud_id);
+    const updates = pending.filter((e) => e.cloud_id);
+    const creates = pending.filter((e) => !e.cloud_id);
 
-    for (const entry of migration) {
+    for (const entry of updates) {
       try {
         await DictionaryService.update(entry.cloud_id!, {
           word: entry.word,
@@ -659,13 +681,13 @@ class SyncService {
         if (isHttpStatus(err, 404)) {
           await window.electronAPI.clearDictionaryCloudId?.(entry.id);
         } else {
-          console.error("Dictionary migration sync failed:", err);
+          console.error("Dictionary update sync failed:", err);
         }
       }
     }
 
-    for (let i = 0; i < fresh.length; i += DICTIONARY_BATCH_SIZE) {
-      const chunk = fresh.slice(i, i + DICTIONARY_BATCH_SIZE);
+    for (let i = 0; i < creates.length; i += DICTIONARY_BATCH_SIZE) {
+      const chunk = creates.slice(i, i + DICTIONARY_BATCH_SIZE);
       try {
         const { created } = await DictionaryService.batchCreate(
           chunk.map((e) => ({
@@ -727,12 +749,6 @@ class SyncService {
   }
 
   private async pullDictionary(): Promise<void> {
-    if (
-      !window.electronAPI.getDictionaryByClientId ||
-      !window.electronAPI.upsertDictionaryFromCloud
-    ) {
-      throw new Error("Dictionary IPC bindings missing — preload out of date");
-    }
     try {
       const since = localStorage.getItem("lastSyncedAt.dictionary") ?? undefined;
       const sinceId = localStorage.getItem("lastSyncedAt.dictionary.id") ?? undefined;
@@ -752,7 +768,7 @@ class SyncService {
         if (entries.length === 0) break;
 
         for (const cloudEntry of entries) {
-          const local = await window.electronAPI.getDictionaryByClientId(
+          const local = await window.electronAPI.getDictionaryByClientId?.(
             cloudEntry.client_dict_id ?? ""
           );
 
@@ -769,7 +785,7 @@ class SyncService {
           const cloudTs = normalizeTimestamp(cloudEntry.updated_at);
           const localTs = local ? normalizeTimestamp(local.updated_at) : "";
           if (!local || cloudTs > localTs) {
-            await window.electronAPI.upsertDictionaryFromCloud(
+            await window.electronAPI.upsertDictionaryFromCloud?.(
               cloudEntry as unknown as Record<string, unknown>
             );
             changed = true;

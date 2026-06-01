@@ -821,7 +821,7 @@ class DatabaseManager {
         "UPDATE custom_dictionary SET deleted_at = datetime('now'), updated_at = datetime('now'), sync_status = 'pending' WHERE id = ? AND deleted_at IS NULL"
       );
       const hardDelete = this.db.prepare(
-        "DELETE FROM custom_dictionary WHERE id = ? AND cloud_id IS NULL AND sync_status != 'pending'"
+        "DELETE FROM custom_dictionary WHERE id = ? AND cloud_id IS NULL"
       );
       const restore = this.db.prepare(
         "UPDATE custom_dictionary SET deleted_at = NULL, source = CASE WHEN source = 'learned' AND ? = 'manual' THEN 'manual' ELSE source END, word = ?, updated_at = datetime('now'), sync_status = 'pending' WHERE id = ?"
@@ -847,11 +847,14 @@ class DatabaseManager {
         for (const existing of existingRows) {
           if (incomingLower.has(existing.word.toLowerCase())) continue;
           if (existing.deleted_at) continue;
-          // Word removed: tombstone if synced OR in-flight, hard-delete only if
-          // truly local-only (never queued for push). The added `sync_status !=
-          // 'pending'` check prevents the race where a row mid-push gets
-          // hard-deleted, its server ack then markSynced a missing row, and
-          // the orphaned cloud row keeps re-downloading.
+          // Word removed: hard-delete any row that has no cloud_id (never
+          // synced), tombstone the rest (synced rows the server must be told
+          // about). We intentionally hard-delete cloud_id-less rows even while
+          // a push is in flight: SyncService.pushPendingDictionary detects the
+          // resulting markDictionarySynced `changes === 0` and deletes the
+          // orphaned cloud row, so there's no re-download loop. Guarding on
+          // sync_status here would instead leak permanent tombstones for words
+          // added and removed before they ever sync.
           const hardResult = hardDelete.run(existing.id);
           if (hardResult.changes === 0) tombstone.run(existing.id);
         }
