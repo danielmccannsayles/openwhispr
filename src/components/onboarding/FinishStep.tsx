@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Check, ExternalLink, Settings, Stethoscope } from "lucide-react";
 import { Button } from "../ui/button";
 import { getTranscriptionProviders } from "../../models/ModelRegistry";
+import { useSettings } from "../../hooks/useSettings";
 import { USE_CASE_IDS } from "./useCases";
 
 const CORTI_CONSOLE_URL = "https://console.corti.app";
@@ -21,6 +22,7 @@ export default function FinishStep({
   isFinishing,
 }: FinishStepProps) {
   const { t } = useTranslation();
+  const { updateTranscriptionSettings } = useSettings();
 
   // The Corti pitch only renders once the Corti provider ships in the model
   // registry (separate PR) — until then healthcare users see the default finish.
@@ -67,7 +69,10 @@ export default function FinishStep({
             {t("onboarding.finish.corti.skip")}
           </Button>
           <Button
-            onClick={() => onFinish(true)}
+            onClick={() => {
+              updateTranscriptionSettings({ cloudTranscriptionProvider: "corti" });
+              onFinish(true);
+            }}
             disabled={isFinishing}
             className="h-8 px-6 rounded-full text-xs"
           >
