@@ -607,6 +607,58 @@ function createBooleanSetter(key: string) {
   };
 }
 
+// Setter for hotkeys that must be registered with the main process before
+// being persisted. Rolls back to the previous key if registration fails.
+function createRegisteredHotkeySetter(
+  key: "chatAgentKey" | "voiceAgentKey",
+  label: string,
+  getRegisterFn: () =>
+    | ((hotkey: string) => Promise<{ success: boolean; message: string }>)
+    | undefined,
+  fallbackSave?: (hotkey: string) => void
+) {
+  return (hotkey: string) => {
+    if (!isBrowser) {
+      useSettingsStore.setState({ [key]: hotkey });
+      return;
+    }
+
+    const registerFn = getRegisterFn();
+    if (!registerFn) {
+      localStorage.setItem(key, hotkey);
+      useSettingsStore.setState({ [key]: hotkey });
+      fallbackSave?.(hotkey);
+      return;
+    }
+
+    const previousKey = useSettingsStore.getState()[key];
+
+    void registerFn(hotkey)
+      .then((result) => {
+        if (!result?.success) {
+          localStorage.setItem(key, previousKey);
+          useSettingsStore.setState({ [key]: previousKey });
+          logger.warn(
+            `Failed to update ${label}`,
+            { hotkey, message: result?.message },
+            "settings"
+          );
+          return;
+        }
+
+        localStorage.setItem(key, hotkey);
+        useSettingsStore.setState({ [key]: hotkey });
+      })
+      .catch((error) => {
+        logger.warn(
+          `Failed to update ${label}`,
+          { hotkey, error: error instanceof Error ? error.message : String(error) },
+          "settings"
+        );
+      });
+  };
+}
+
 let envPersistTimer: ReturnType<typeof setTimeout> | null = null;
 function debouncedPersistToEnv() {
   if (!isBrowser) return;
@@ -1203,45 +1255,11 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     if (isBrowser) localStorage.setItem("meetingKey", key);
     set({ meetingKey: key });
   },
-  setVoiceAgentKey: (key: string) => {
-    if (!isBrowser) {
-      useSettingsStore.setState({ voiceAgentKey: key });
-      return;
-    }
-
-    const updateVoiceAgentHotkey = window.electronAPI?.updateVoiceAgentHotkey;
-    if (!updateVoiceAgentHotkey) {
-      localStorage.setItem("voiceAgentKey", key);
-      useSettingsStore.setState({ voiceAgentKey: key });
-      return;
-    }
-
-    const previousKey = get().voiceAgentKey;
-
-    void updateVoiceAgentHotkey(key)
-      .then((result) => {
-        if (!result?.success) {
-          localStorage.setItem("voiceAgentKey", previousKey);
-          useSettingsStore.setState({ voiceAgentKey: previousKey });
-          logger.warn(
-            "Failed to update voice agent hotkey",
-            { hotkey: key, message: result?.message },
-            "settings"
-          );
-          return;
-        }
-
-        localStorage.setItem("voiceAgentKey", key);
-        useSettingsStore.setState({ voiceAgentKey: key });
-      })
-      .catch((error) => {
-        logger.warn(
-          "Failed to update voice agent hotkey",
-          { hotkey: key, error: error instanceof Error ? error.message : String(error) },
-          "settings"
-        );
-      });
-  },
+  setVoiceAgentKey: createRegisteredHotkeySetter(
+    "voiceAgentKey",
+    "voice agent hotkey",
+    () => window.electronAPI?.updateVoiceAgentHotkey
+  ),
 
   setMeetingHotkeyLayoutMode: (mode: "side-panel" | "full-width") => {
     if (isBrowser) localStorage.setItem("meetingHotkeyLayoutMode", mode);
@@ -1419,46 +1437,12 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
 
   setChatAgentModel: createStringSetter("chatAgentModel"),
   setChatAgentProvider: createStringSetter("chatAgentProvider"),
-  setChatAgentKey: (key: string) => {
-    if (!isBrowser) {
-      useSettingsStore.setState({ chatAgentKey: key });
-      return;
-    }
-
-    const updateAgentHotkey = window.electronAPI?.updateAgentHotkey;
-    if (!updateAgentHotkey) {
-      localStorage.setItem("chatAgentKey", key);
-      useSettingsStore.setState({ chatAgentKey: key });
-      window.electronAPI?.saveAgentKey?.(key);
-      return;
-    }
-
-    const previousKey = get().chatAgentKey;
-
-    void updateAgentHotkey(key)
-      .then((result) => {
-        if (!result?.success) {
-          localStorage.setItem("chatAgentKey", previousKey);
-          useSettingsStore.setState({ chatAgentKey: previousKey });
-          logger.warn(
-            "Failed to update chat agent hotkey",
-            { hotkey: key, message: result?.message },
-            "settings"
-          );
-          return;
-        }
-
-        localStorage.setItem("chatAgentKey", key);
-        useSettingsStore.setState({ chatAgentKey: key });
-      })
-      .catch((error) => {
-        logger.warn(
-          "Failed to update chat agent hotkey",
-          { hotkey: key, error: error instanceof Error ? error.message : String(error) },
-          "settings"
-        );
-      });
-  },
+  setChatAgentKey: createRegisteredHotkeySetter(
+    "chatAgentKey",
+    "chat agent hotkey",
+    () => window.electronAPI?.updateAgentHotkey,
+    (key) => window.electronAPI?.saveAgentKey?.(key)
+  ),
   setChatAgentCloudMode: createStringSetter("chatAgentCloudMode"),
   setChatAgentMode: createStringSetter("chatAgentMode") as (mode: InferenceMode) => void,
   setChatAgentCloudBaseUrl: createStringSetter("chatAgentCloudBaseUrl"),

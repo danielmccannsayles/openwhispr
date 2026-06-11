@@ -22,7 +22,7 @@ import { matchesDictionaryPrompt } from "../utils/dictionaryEchoFilter.js";
 const REASONING_CACHE_TTL = 30000; // 30 seconds
 const REALTIME_MODELS = new Set(["gpt-4o-mini-transcribe", "gpt-4o-transcribe"]);
 
-function resolveReasoningRoute(text, settings, agentName, voiceAgentRequested = false) {
+function resolveReasoningRoute(text, settings, agentName, voiceAgentRequested) {
   const cleanupReachable =
     !!settings.useCleanupModel && (!!settings.cleanupModel?.trim() || isCloudCleanupMode());
   const agentModel = settings.dictationAgentModel?.trim() || "";
