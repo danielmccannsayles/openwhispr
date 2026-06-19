@@ -366,7 +366,12 @@ function TranscriptionSection({
         onSelect={handleTranscriptionModeSelect}
       />
 
-      {transcriptionMode === "providers" && renderTranscriptionPicker("cloud")}
+      {transcriptionMode === "providers" && (
+        <>
+          {renderTranscriptionPicker("cloud")}
+          {renderPreviewToggle()}
+        </>
+      )}
       {transcriptionMode === "local" && (
         <>
           {renderTranscriptionPicker("local")}
