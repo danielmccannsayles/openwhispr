@@ -15,14 +15,10 @@ const CortiStreaming = require("./cortiStreaming");
 const OpenAIRealtimeStreaming = require("./openaiRealtimeStreaming");
 const { getCortiToken } = require("./cortiAuth");
 const { createTinfoilRealtimeSocket } = require("./tinfoilSecureClient");
-
-// Tinfoil serves an OpenAI Realtime-compatible transcription endpoint inside a
-// confidential enclave. Same client as OpenAI; the socket is dialed through
-// the tinfoil SDK so the enclave is attested and the TLS connection pinned,
-// and the declared capture rate is the worklet's true 16kHz (no server-side
-// resample of a 24kHz declaration).
-const TINFOIL_REALTIME_MODEL = "voxtral-mini-4b-realtime";
 const AudioStorageManager = require("./audioStorage");
+
+// Tinfoil's only realtime STT model — fallback when the renderer omits one.
+const TINFOIL_REALTIME_MODEL = "voxtral-mini-4b-realtime";
 const liveSpeakerIdentifier = require("./liveSpeakerIdentifier");
 const MeetingEchoLeakDetector = require("./meetingEchoLeakDetector");
 const { applySmartSpacing } = require("./smartSpacing");
@@ -344,6 +340,7 @@ class IPCHandlers {
     this._dictationStreaming = null;
     this._dictationConnectPromise = null;
     this._dictationIdleTimer = null;
+    this._dictationPreviewEnabled = false;
     this._meetingMicStreaming = null;
     this._meetingSystemStreaming = null;
     this._hotkeyCaptureMode = false;
@@ -5300,16 +5297,21 @@ class IPCHandlers {
       await disconnectMeetingStreaming().catch(() => {});
     };
 
-    const setupDictationCallbacks = (streaming, event, { preview = false } = {}) => {
+    const setupDictationCallbacks = (streaming, event) => {
       streaming.onPartialTranscript = (text) => {
         event.sender.send("dictation-realtime-partial", text);
-        if (preview && text) this.windowManager.showTranscriptionPreview(text);
+        if (this._dictationPreviewEnabled && text) {
+          this.windowManager.showTranscriptionPreview(text);
+        }
       };
       streaming.onFinalTranscript = (text) => event.sender.send("dictation-realtime-final", text);
-      streaming.onError = (err) => event.sender.send("dictation-realtime-error", err.message);
+      streaming.onError = (err) => {
+        event.sender.send("dictation-realtime-error", err.message);
+        if (this._dictationPreviewEnabled) this.windowManager.hideTranscriptionPreview();
+      };
       streaming.onSessionEnd = (data) => {
         event.sender.send("dictation-realtime-session-end", data || {});
-        if (preview) this.windowManager.hideTranscriptionPreview();
+        if (this._dictationPreviewEnabled) this.windowManager.hideTranscriptionPreview();
       };
     };
 
@@ -5339,6 +5341,7 @@ class IPCHandlers {
       }
 
       clearDictationIdleTimer();
+      this._dictationPreviewEnabled = !!options.preview;
 
       if (this._dictationStreaming) {
         await this._dictationStreaming.disconnect().catch(() => {});
@@ -5347,25 +5350,29 @@ class IPCHandlers {
 
       const connectInner = async () => {
         const isCloud = options.mode !== "byok";
-        const isTinfoil = options.provider === "tinfoil-realtime";
         const apiKey = await fetchRealtimeToken(event, {
           mode: options.mode,
           provider: options.provider,
         });
         const streaming = new OpenAIRealtimeStreaming();
-        streaming._previewEnabled = !!options.preview;
-        setupDictationCallbacks(streaming, event, { preview: streaming._previewEnabled });
-        await streaming.connect(
-          isTinfoil
-            ? {
-                apiKey,
-                model: TINFOIL_REALTIME_MODEL,
-                inputRate: 16000,
-                createSocket: () =>
-                  createTinfoilRealtimeSocket({ model: TINFOIL_REALTIME_MODEL, apiKey }),
-              }
-            : { apiKey, model: options.model || "gpt-4o-mini-transcribe", preconfigured: isCloud }
-        );
+        setupDictationCallbacks(streaming, event);
+        if (options.provider === "tinfoil-realtime") {
+          const model = options.model || TINFOIL_REALTIME_MODEL;
+          await streaming.connect({
+            apiKey,
+            model,
+            // Declare the capture worklet's true 16kHz rate — Tinfoil honors
+            // it, unlike OpenAI's fixed 24kHz contract.
+            inputRate: 16000,
+            createSocket: () => createTinfoilRealtimeSocket({ model, apiKey }),
+          });
+        } else {
+          await streaming.connect({
+            apiKey,
+            model: options.model || "gpt-4o-mini-transcribe",
+            preconfigured: isCloud,
+          });
+        }
         this._dictationStreaming = streaming;
       };
 
@@ -5807,6 +5814,7 @@ class IPCHandlers {
     ipcMain.handle("dictation-realtime-start", async (event, options = {}) => {
       try {
         clearDictationIdleTimer();
+        this._dictationPreviewEnabled = !!options.preview;
         if (!this._dictationStreaming?.isConnected) await connectDictationStreaming(event, options);
         return { success: true };
       } catch (err) {
@@ -5823,10 +5831,12 @@ class IPCHandlers {
       if (!this._dictationStreaming) {
         return { success: true, text: "" };
       }
-      const previewEnabled = this._dictationStreaming._previewEnabled;
       const result = await this._dictationStreaming.disconnect().catch(() => ({ text: "" }));
       this._dictationStreaming = null;
-      if (previewEnabled) this.windowManager.hideTranscriptionPreview();
+      if (this._dictationPreviewEnabled) {
+        this.windowManager.hideTranscriptionPreview();
+        this._dictationPreviewEnabled = false;
+      }
       return { success: true, text: result.text || "" };
     });
 
