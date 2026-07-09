@@ -680,6 +680,11 @@ function createStringSetter(key: string) {
   };
 }
 
+/** Writes a string setting whose key is computed rather than known up front. */
+export function setStringSetting(key: string, value: string): void {
+  createStringSetter(key)(value);
+}
+
 function createBooleanSetter(key: string) {
   return (value: boolean) => {
     if (isBrowser) localStorage.setItem(key, String(value));

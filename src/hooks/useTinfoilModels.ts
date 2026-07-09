@@ -7,8 +7,6 @@ interface UseTinfoilModelsResult {
   models: CloudModelDefinition[];
   loading: boolean;
   error: string | null;
-  /** True once Tinfoil has answered. Until then its list can't be trusted to be complete. */
-  fetched: boolean;
   refresh: () => Promise<void>;
 }
 
@@ -21,7 +19,6 @@ export function useTinfoilModels(): UseTinfoilModelsResult {
   const [models, setModels] = useState<CloudModelDefinition[]>(() => getTinfoilModels());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [fetched, setFetched] = useState(false);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -41,7 +38,6 @@ export function useTinfoilModels(): UseTinfoilModelsResult {
       const fresh = await refreshTinfoilModels();
       if (isMountedRef.current) {
         setModels(fresh);
-        setFetched(true);
       }
     } catch (err) {
       // Leave the known list in place: without an answer we can't tell a
@@ -61,5 +57,5 @@ export function useTinfoilModels(): UseTinfoilModelsResult {
     refresh();
   }, [refresh]);
 
-  return { models, loading, error, fetched, refresh };
+  return { models, loading, error, refresh };
 }

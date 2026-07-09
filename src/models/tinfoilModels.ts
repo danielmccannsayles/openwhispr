@@ -1,5 +1,8 @@
-import { applyTinfoilModels, type CloudModelDefinition } from "./ModelRegistry";
+import { applyTinfoilModels, getTinfoilModels, type CloudModelDefinition } from "./ModelRegistry";
 import { writeCachedTinfoilModels } from "./tinfoilModelCache";
+import { INFERENCE_SCOPES } from "../config/inferenceScopes";
+import { getSettings, setStringSetting } from "../stores/settingsStore";
+import { recordTinfoilModelSwitch } from "../stores/tinfoilModelSwitchStore";
 
 /** A chat model as reported by Tinfoil's /v1/models, narrowed by the main process. */
 export interface TinfoilCatalogModel {
@@ -41,6 +44,38 @@ export function mergeTinfoilModels(catalog: TinfoilCatalogModel[]): CloudModelDe
   }));
 }
 
+/**
+ * Moves any scope still pointing at a model Tinfoil has retired onto one it
+ * still serves — otherwise the next request is a 404 the user can't diagnose.
+ * Only ever called after a successful fetch, so a missing model really is gone.
+ */
+function reconcileSelectedModels(
+  previous: CloudModelDefinition[],
+  models: CloudModelDefinition[]
+): void {
+  const available = new Set(models.map((model) => model.id));
+  const settings = getSettings() as unknown as Record<string, unknown>;
+  const replacement = models[0];
+  const announced = new Set<string>();
+
+  for (const scope of Object.values(INFERENCE_SCOPES)) {
+    const { provider, model } = scope.storeKeys;
+    if (settings[provider] !== "tinfoil") continue;
+
+    const selected = settings[model];
+    if (typeof selected !== "string" || !selected || available.has(selected)) continue;
+
+    setStringSetting(model, replacement.id);
+    // Several scopes can share a retired model; say so once.
+    if (announced.has(selected)) continue;
+    announced.add(selected);
+    recordTinfoilModelSwitch({
+      from: previous.find((m) => m.id === selected)?.name ?? selected,
+      to: replacement.name,
+    });
+  }
+}
+
 let inFlight: Promise<CloudModelDefinition[]> | null = null;
 
 async function fetchAndApply(): Promise<CloudModelDefinition[]> {
@@ -56,8 +91,10 @@ async function fetchAndApply(): Promise<CloudModelDefinition[]> {
     throw new Error("Tinfoil returned no chat models");
   }
 
+  const previous = getTinfoilModels();
   applyTinfoilModels(models);
   writeCachedTinfoilModels(models);
+  reconcileSelectedModels(previous, models);
   return models;
 }
 

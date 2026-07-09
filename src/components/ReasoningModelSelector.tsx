@@ -330,7 +330,6 @@ export default function ReasoningModelSelector({
     models: tinfoilModels,
     loading: tinfoilModelsLoading,
     error: tinfoilModelsError,
-    fetched: tinfoilModelsFetched,
   } = useTinfoilModels();
 
   const effectiveMode = mode || selectedMode;
@@ -417,22 +416,6 @@ export default function ReasoningModelSelector({
       setSelectedCloudProvider(localReasoningProvider);
     }
   }, [localProviders, localReasoningProvider]);
-
-  // Tinfoil may have retired the saved model, so move to one it still serves.
-  // Only once it has actually answered — an unreachable endpoint says nothing
-  // about which models exist, and switching away would lose the user's choice.
-  useEffect(() => {
-    if (selectedCloudProvider !== "tinfoil") return;
-    if (!tinfoilModelsFetched) return;
-    if (tinfoilModels.some((model) => model.id === reasoningModel)) return;
-    setReasoningModel(tinfoilModels[0].id);
-  }, [
-    selectedCloudProvider,
-    tinfoilModels,
-    tinfoilModelsFetched,
-    reasoningModel,
-    setReasoningModel,
-  ]);
 
   const [downloadedModels, setDownloadedModels] = useState<Set<string>>(new Set());
 
