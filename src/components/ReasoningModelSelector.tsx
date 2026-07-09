@@ -379,8 +379,9 @@ export default function ReasoningModelSelector({
     const iconUrl = getProviderIcon(selectedCloudProvider);
     const invertInDark = isMonochromeProvider(selectedCloudProvider);
 
-    // Tinfoil's list is fetched at runtime, so read it from the hook rather
-    // than the registry snapshot taken at module load.
+    // The registry is still the source of truth; refreshTinfoilModels writes
+    // this same list into it. The hook hands it back so React re-renders when
+    // it changes, which mutating the registry alone wouldn't do.
     if (selectedCloudProvider === "tinfoil") {
       return tinfoilModels.map((model) => ({
         value: model.id,
@@ -418,8 +419,8 @@ export default function ReasoningModelSelector({
   }, [localProviders, localReasoningProvider]);
 
   // Tinfoil may have retired the saved model, so move to one it still serves.
-  // Only once it has actually answered — offline, a model missing from the
-  // bundled list is unknown, not gone, and switching away would lose it.
+  // Only once it has actually answered — an unreachable endpoint says nothing
+  // about which models exist, and switching away would lose the user's choice.
   useEffect(() => {
     if (selectedCloudProvider !== "tinfoil") return;
     if (!tinfoilModelsFetched) return;

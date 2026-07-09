@@ -1,5 +1,6 @@
 import type { LanguageModel } from "ai";
 import type { TinfoilAI } from "tinfoil";
+import { refreshTinfoilModels } from "../../models/tinfoilModels";
 
 type TinfoilModule = typeof import("tinfoil");
 type TinfoilAISDKProvider = Awaited<ReturnType<TinfoilModule["createTinfoilAI"]>>;
@@ -28,8 +29,23 @@ function normalizeApiKey(apiKey: string): string {
   return key;
 }
 
+/**
+ * Tinfoil adds and retires models without an app release, so pull its list into
+ * the registry before every request — later code reads token params and
+ * thinking support from there. The main process caps this at one fetch an hour,
+ * and a failure leaves the registry on its last known list.
+ */
+async function syncTinfoilCatalog(): Promise<void> {
+  try {
+    await refreshTinfoilModels();
+  } catch {
+    // Offline or endpoint down: keep the models we already know about.
+  }
+}
+
 export async function getTinfoilChatClient(apiKey: string): Promise<TinfoilAI> {
   const key = normalizeApiKey(apiKey);
+  await syncTinfoilCatalog();
   const cached = chatClientCache.get(key);
   if (cached) return cached;
 
@@ -50,6 +66,7 @@ export async function getTinfoilChatClient(apiKey: string): Promise<TinfoilAI> {
 
 async function getTinfoilAISDKProvider(apiKey: string): Promise<TinfoilAISDKProvider> {
   const key = normalizeApiKey(apiKey);
+  await syncTinfoilCatalog();
   const cached = aiSdkProviderCache.get(key);
   if (cached) return cached;
 

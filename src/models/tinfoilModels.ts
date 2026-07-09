@@ -1,4 +1,5 @@
-import type { CloudModelDefinition } from "./ModelRegistry";
+import { applyTinfoilModels, type CloudModelDefinition } from "./ModelRegistry";
+import { writeCachedTinfoilModels } from "./tinfoilModelCache";
 
 /** A chat model as reported by Tinfoil's /v1/models, narrowed by the main process. */
 export interface TinfoilCatalogModel {
@@ -40,10 +41,37 @@ export function mergeTinfoilModels(catalog: TinfoilCatalogModel[]): CloudModelDe
   }));
 }
 
-export async function fetchTinfoilModels(): Promise<CloudModelDefinition[]> {
+let inFlight: Promise<CloudModelDefinition[]> | null = null;
+
+async function fetchAndApply(): Promise<CloudModelDefinition[]> {
   const fetchModels = window.electronAPI?.getTinfoilChatModels;
   if (!fetchModels) {
     throw new Error("Tinfoil model list is unavailable");
   }
-  return mergeTinfoilModels(await fetchModels());
+
+  const models = mergeTinfoilModels(await fetchModels());
+  // An empty list would mean Tinfoil serves no chat models at all. Far more
+  // likely something upstream broke, so keep what we already have.
+  if (models.length === 0) {
+    throw new Error("Tinfoil returned no chat models");
+  }
+
+  applyTinfoilModels(models);
+  writeCachedTinfoilModels(models);
+  return models;
+}
+
+/**
+ * Pulls Tinfoil's model list into the registry and the cache. The main process
+ * refetches at most once an hour, so this is cheap to call before every
+ * request. Rejects when Tinfoil can't be reached, leaving the registry as it
+ * was — an unreachable endpoint says nothing about which models still exist.
+ */
+export function refreshTinfoilModels(): Promise<CloudModelDefinition[]> {
+  if (!inFlight) {
+    inFlight = fetchAndApply().finally(() => {
+      inFlight = null;
+    });
+  }
+  return inFlight;
 }

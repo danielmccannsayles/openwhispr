@@ -6,9 +6,13 @@ const debugLogger = require("./debugLogger");
 
 const TINFOIL_MODELS_URL = "https://inference.tinfoil.sh/v1/models";
 const REFETCH_INTERVAL_MS = 60 * 60 * 1000;
+// Callers refresh before every request, so don't make each one wait out the
+// timeout while Tinfoil is unreachable.
+const RETRY_AFTER_FAILURE_MS = 60 * 1000;
 const REQUEST_TIMEOUT_MS = 10_000;
 
 let cached = null;
+let lastFailureAt = 0;
 let inFlight = null;
 
 /**
@@ -61,13 +65,19 @@ async function getTinfoilChatModels() {
     return cached.models;
   }
 
+  if (Date.now() - lastFailureAt < RETRY_AFTER_FAILURE_MS) {
+    throw new Error("Tinfoil models unavailable");
+  }
+
   if (!inFlight) {
     inFlight = fetchModels()
       .then((models) => {
         cached = { models, fetchedAt: Date.now() };
+        lastFailureAt = 0;
         return models;
       })
       .catch((error) => {
+        lastFailureAt = Date.now();
         debugLogger.warn("Failed to fetch Tinfoil models", { error: error.message });
         throw error;
       })

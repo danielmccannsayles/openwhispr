@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  applyTinfoilModels,
-  getTinfoilModels,
-  type CloudModelDefinition,
-} from "../models/ModelRegistry";
-import { fetchTinfoilModels } from "../models/tinfoilModels";
+import { getTinfoilModels, type CloudModelDefinition } from "../models/ModelRegistry";
+import { refreshTinfoilModels } from "../models/tinfoilModels";
 import logger from "../utils/logger";
 
 interface UseTinfoilModelsResult {
@@ -17,8 +13,9 @@ interface UseTinfoilModelsResult {
 }
 
 /**
- * Loads Tinfoil's model list from its /v1/models endpoint, falling back to the
- * models bundled with the app so the picker stays usable offline.
+ * Refreshes Tinfoil's model list into the registry and re-renders with it. The
+ * registry keeps its last known list when the fetch fails, so the picker stays
+ * usable offline.
  */
 export function useTinfoilModels(): UseTinfoilModelsResult {
   const [models, setModels] = useState<CloudModelDefinition[]>(() => getTinfoilModels());
@@ -41,19 +38,13 @@ export function useTinfoilModels(): UseTinfoilModelsResult {
     }
 
     try {
-      const fresh = await fetchTinfoilModels();
-      // An empty list would mean Tinfoil serves no chat models at all. Far more
-      // likely something upstream broke, so keep the bundled ones.
-      if (fresh.length === 0) {
-        throw new Error("Tinfoil returned no chat models");
-      }
-      applyTinfoilModels(fresh);
+      const fresh = await refreshTinfoilModels();
       if (isMountedRef.current) {
         setModels(fresh);
         setFetched(true);
       }
     } catch (err) {
-      // Leave the bundled list in place: without an answer we can't tell a
+      // Leave the known list in place: without an answer we can't tell a
       // retired model from an unreachable endpoint.
       logger.error("Failed to load Tinfoil models", { error: err }, "models");
       if (isMountedRef.current) {

@@ -1,5 +1,6 @@
 import modelDataRaw from "./modelRegistryData.json";
 import { isCloudCleanupMode, getSettings } from "../stores/settingsStore";
+import { readCachedTinfoilModels } from "./tinfoilModelCache";
 
 export interface ModelDefinition {
   id: string;
@@ -116,6 +117,17 @@ const modelData: ModelRegistryData = modelDataRaw as ModelRegistryData;
 
 function getTinfoilCloudProvider(): CloudProviderData | undefined {
   return modelData.cloudProviders.find((provider) => provider.id === "tinfoil");
+}
+
+// Start from the last list Tinfoil gave us, so a model the user selected while
+// online survives a launch that can't reach the endpoint. The bundled models
+// are only the first-run floor, before any fetch has ever landed.
+const cachedTinfoilModels = readCachedTinfoilModels();
+if (cachedTinfoilModels.length > 0) {
+  const tinfoilProvider = getTinfoilCloudProvider();
+  if (tinfoilProvider) {
+    tinfoilProvider.models = cachedTinfoilModels;
+  }
 }
 
 function createPromptFormatter(template: string): (text: string, systemPrompt: string) => string {
