@@ -17,6 +17,7 @@ import OpenAICompatiblePanel from "./OpenAICompatiblePanel";
 import { API_ENDPOINTS } from "../config/constants";
 import logger from "../utils/logger";
 import { REASONING_PROVIDERS } from "../models/ModelRegistry";
+import { useTinfoilModels } from "../hooks/useTinfoilModels";
 import { modelRegistry } from "../models/ModelRegistry";
 import { getProviderIcon, isMonochromeProvider } from "../utils/providerIcons";
 import { createExternalLinkHandler } from "../utils/externalLinks";
@@ -325,6 +326,11 @@ export default function ReasoningModelSelector({
   const [selectedMode, setSelectedMode] = useState<"cloud" | "local">(mode || "cloud");
   const [selectedCloudProvider, setSelectedCloudProvider] = useState("openai");
   const [selectedLocalProvider, setSelectedLocalProvider] = useState("qwen");
+  const {
+    models: tinfoilModels,
+    loading: tinfoilModelsLoading,
+    error: tinfoilModelsError,
+  } = useTinfoilModels();
 
   const effectiveMode = mode || selectedMode;
 
@@ -369,11 +375,26 @@ export default function ReasoningModelSelector({
     if (selectedCloudProvider === "openai") return openaiModelOptions;
     if (selectedCloudProvider === "custom") return [];
 
+    const iconUrl = getProviderIcon(selectedCloudProvider);
+    const invertInDark = isMonochromeProvider(selectedCloudProvider);
+
+    // Tinfoil's list is fetched at runtime, so read it from the hook rather
+    // than the registry snapshot taken at module load.
+    if (selectedCloudProvider === "tinfoil") {
+      return tinfoilModels.map((model) => ({
+        value: model.id,
+        label: model.name,
+        description: model.descriptionKey
+          ? t(model.descriptionKey, { defaultValue: model.description })
+          : model.description,
+        icon: iconUrl,
+        invertInDark,
+      }));
+    }
+
     const provider = REASONING_PROVIDERS[selectedCloudProvider as keyof typeof REASONING_PROVIDERS];
     if (!provider?.models) return [];
 
-    const iconUrl = getProviderIcon(selectedCloudProvider);
-    const invertInDark = isMonochromeProvider(selectedCloudProvider);
     return provider.models.map((model) => ({
       ...model,
       description: model.descriptionKey
@@ -382,7 +403,7 @@ export default function ReasoningModelSelector({
       icon: iconUrl,
       invertInDark,
     }));
-  }, [selectedCloudProvider, openaiModelOptions, t]);
+  }, [selectedCloudProvider, openaiModelOptions, tinfoilModels, t]);
 
   useEffect(() => {
     const localProviderIds = localProviders.map((p) => p.id);
@@ -394,6 +415,15 @@ export default function ReasoningModelSelector({
       setSelectedCloudProvider(localReasoningProvider);
     }
   }, [localProviders, localReasoningProvider]);
+
+  // The fetched list may not contain the saved model (first run, or Tinfoil
+  // retired it), so fall back to the first available one.
+  useEffect(() => {
+    if (selectedCloudProvider !== "tinfoil") return;
+    if (tinfoilModels.length === 0) return;
+    if (tinfoilModels.some((model) => model.id === reasoningModel)) return;
+    setReasoningModel(tinfoilModels[0].id);
+  }, [selectedCloudProvider, tinfoilModels, reasoningModel, setReasoningModel]);
 
   const [downloadedModels, setDownloadedModels] = useState<Set<string>>(new Set());
 
@@ -655,6 +685,20 @@ export default function ReasoningModelSelector({
                   <h4 className="text-sm font-medium text-foreground">
                     {t("reasoning.selectModel")}
                   </h4>
+                  {selectedCloudProvider === "tinfoil" && selectedCloudModels.length === 0 && (
+                    <>
+                      {tinfoilModelsLoading && (
+                        <p className="text-xs text-primary">
+                          {t("reasoning.custom.fetchingModels")}
+                        </p>
+                      )}
+                      {!tinfoilModelsLoading && tinfoilModelsError && (
+                        <p className="text-xs text-destructive">
+                          {t("reasoning.custom.unableToLoadModels")}
+                        </p>
+                      )}
+                    </>
+                  )}
                   <ModelCardList
                     models={selectedCloudModels}
                     selectedModel={reasoningModel}

@@ -1,5 +1,6 @@
 import modelDataRaw from "./modelRegistryData.json";
 import { isCloudCleanupMode, getSettings } from "../stores/settingsStore";
+import { readCachedTinfoilModels } from "./tinfoilModels";
 
 export interface ModelDefinition {
   id: string;
@@ -114,6 +115,18 @@ interface ModelRegistryData {
 
 const modelData: ModelRegistryData = modelDataRaw as ModelRegistryData;
 
+function getTinfoilCloudProvider(): CloudProviderData | undefined {
+  return modelData.cloudProviders.find((provider) => provider.id === "tinfoil");
+}
+
+// Tinfoil's models come from its /v1/models endpoint rather than the static
+// registry. Seed from the last good fetch so ids resolve before a refresh
+// lands — getOpenAiApiConfig and getModelProvider both read this synchronously.
+const seededTinfoilProvider = getTinfoilCloudProvider();
+if (seededTinfoilProvider) {
+  seededTinfoilProvider.models = readCachedTinfoilModels();
+}
+
 function createPromptFormatter(template: string): (text: string, systemPrompt: string) => string {
   return (text: string, systemPrompt: string) => {
     return template.replace("{system}", systemPrompt).replace("{user}", text);
@@ -221,18 +234,22 @@ export function isEnterpriseProvider(value: unknown): value is EnterpriseProvide
   return typeof value === "string" && (ENTERPRISE_PROVIDERS as readonly string[]).includes(value);
 }
 
+function toReasoningModel(m: CloudModelDefinition): ReasoningModel {
+  return {
+    value: m.id,
+    label: m.name,
+    description: m.description,
+    descriptionKey: m.descriptionKey,
+  };
+}
+
 function buildReasoningProviders(): ReasoningProviders {
   const providers: ReasoningProviders = {};
 
   for (const cloudProvider of modelRegistry.getCloudProviders()) {
     providers[cloudProvider.id] = {
       name: cloudProvider.name,
-      models: cloudProvider.models.map((m) => ({
-        value: m.id,
-        label: m.name,
-        description: m.description,
-        descriptionKey: m.descriptionKey,
-      })),
+      models: cloudProvider.models.map(toReasoningModel),
     };
   }
 
@@ -263,6 +280,22 @@ function buildReasoningProviders(): ReasoningProviders {
 
 export const REASONING_PROVIDERS = buildReasoningProviders();
 
+export function getTinfoilModels(): CloudModelDefinition[] {
+  return getTinfoilCloudProvider()?.models ?? [];
+}
+
+/** Replaces Tinfoil's model list with a freshly fetched one. */
+export function applyTinfoilModels(models: CloudModelDefinition[]): void {
+  const provider = getTinfoilCloudProvider();
+  if (provider) {
+    provider.models = models;
+  }
+  const reasoningProvider = REASONING_PROVIDERS.tinfoil;
+  if (reasoningProvider) {
+    reasoningProvider.models = models.map(toReasoningModel);
+  }
+}
+
 export interface ReasoningModelWithProvider extends ReasoningModel {
   provider: string;
   fullLabel: string;
@@ -292,6 +325,12 @@ export function getModelProvider(modelId: string): string {
 
   if (storedProvider === "custom") {
     return "custom";
+  }
+
+  // Tinfoil's model list is fetched at runtime, so a selected id may not be in
+  // the registry yet. Trust the stored provider rather than guessing from the id.
+  if (storedProvider === "tinfoil") {
+    return "tinfoil";
   }
 
   if (isEnterpriseProvider(storedProvider)) {
