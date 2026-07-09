@@ -330,6 +330,7 @@ export default function ReasoningModelSelector({
     models: tinfoilModels,
     loading: tinfoilModelsLoading,
     error: tinfoilModelsError,
+    fetched: tinfoilModelsFetched,
   } = useTinfoilModels();
 
   const effectiveMode = mode || selectedMode;
@@ -416,14 +417,21 @@ export default function ReasoningModelSelector({
     }
   }, [localProviders, localReasoningProvider]);
 
-  // The fetched list may not contain the saved model (first run, or Tinfoil
-  // retired it), so fall back to the first available one.
+  // Tinfoil may have retired the saved model, so move to one it still serves.
+  // Only once it has actually answered — offline, a model missing from the
+  // bundled list is unknown, not gone, and switching away would lose it.
   useEffect(() => {
     if (selectedCloudProvider !== "tinfoil") return;
-    if (tinfoilModels.length === 0) return;
+    if (!tinfoilModelsFetched) return;
     if (tinfoilModels.some((model) => model.id === reasoningModel)) return;
     setReasoningModel(tinfoilModels[0].id);
-  }, [selectedCloudProvider, tinfoilModels, reasoningModel, setReasoningModel]);
+  }, [
+    selectedCloudProvider,
+    tinfoilModels,
+    tinfoilModelsFetched,
+    reasoningModel,
+    setReasoningModel,
+  ]);
 
   const [downloadedModels, setDownloadedModels] = useState<Set<string>>(new Set());
 
@@ -685,9 +693,9 @@ export default function ReasoningModelSelector({
                   <h4 className="text-sm font-medium text-foreground">
                     {t("reasoning.selectModel")}
                   </h4>
-                  {selectedCloudProvider === "tinfoil" && selectedCloudModels.length === 0 && (
+                  {selectedCloudProvider === "tinfoil" && (
                     <>
-                      {tinfoilModelsLoading && (
+                      {tinfoilModelsLoading && selectedCloudModels.length === 0 && (
                         <p className="text-xs text-primary">
                           {t("reasoning.custom.fetchingModels")}
                         </p>

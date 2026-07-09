@@ -1,8 +1,12 @@
 import type { CloudModelDefinition } from "./ModelRegistry";
 
-export const TINFOIL_MODELS_URL = "https://inference.tinfoil.sh/v1/models";
-
-const CACHE_KEY = "tinfoilModels";
+/** A chat model as reported by Tinfoil's /v1/models, narrowed by the main process. */
+export interface TinfoilCatalogModel {
+  id: string;
+  name: string;
+  description: string;
+  supportsThinking: boolean;
+}
 
 /**
  * Curated, translated descriptions keyed by model id. The endpoint only returns
@@ -18,73 +22,28 @@ const DESCRIPTION_KEYS: Record<string, string> = {
   "llama3-3-70b": "models.descriptions.cloud.tinfoil_llama3_3_70b",
 };
 
-interface TinfoilApiModel {
-  id?: unknown;
-  name?: unknown;
-  description?: unknown;
-  type?: unknown;
-  reasoning?: unknown;
-  endpoints?: unknown;
-}
-
 /**
- * Tinfoil serves chat, audio, embedding, tts and tool models from one list, so
- * the reasoning picker has to narrow it to models it can actually send a chat
- * completion to.
+ * Turns Tinfoil's live list into registry entries. The endpoint is the source
+ * of truth for which models exist and what they do, so models it doesn't list
+ * drop out and models we've never heard of appear. Only the description is
+ * ours: every Tinfoil model takes max_tokens and supports temperature.
  */
-function isChatModel(model: TinfoilApiModel): boolean {
-  if (model.type !== "chat") return false;
-  return Array.isArray(model.endpoints) && model.endpoints.includes("/v1/chat/completions");
-}
-
-function toCloudModel(model: TinfoilApiModel): CloudModelDefinition | null {
-  const id = typeof model.id === "string" ? model.id : "";
-  if (!id) return null;
-
-  return {
-    id,
-    name: typeof model.name === "string" && model.name ? model.name : id,
-    description: typeof model.description === "string" ? model.description : "",
-    descriptionKey: DESCRIPTION_KEYS[id],
-    supportsThinking: model.reasoning === true,
+export function mergeTinfoilModels(catalog: TinfoilCatalogModel[]): CloudModelDefinition[] {
+  return catalog.map((model) => ({
+    id: model.id,
+    name: model.name,
+    description: model.description,
+    descriptionKey: DESCRIPTION_KEYS[model.id],
+    supportsThinking: model.supportsThinking,
     tokenParam: "max_tokens",
     supportsTemperature: true,
-  };
+  }));
 }
 
-export function parseTinfoilModels(payload: unknown): CloudModelDefinition[] {
-  const data = (payload as { data?: unknown } | null)?.data;
-  if (!Array.isArray(data)) return [];
-
-  return (data as TinfoilApiModel[])
-    .filter(isChatModel)
-    .map(toCloudModel)
-    .filter((model): model is CloudModelDefinition => model !== null);
-}
-
-export async function fetchTinfoilModels(signal?: AbortSignal): Promise<CloudModelDefinition[]> {
-  const response = await fetch(TINFOIL_MODELS_URL, { method: "GET", signal });
-  if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`.trim());
+export async function fetchTinfoilModels(): Promise<CloudModelDefinition[]> {
+  const fetchModels = window.electronAPI?.getTinfoilChatModels;
+  if (!fetchModels) {
+    throw new Error("Tinfoil model list is unavailable");
   }
-  return parseTinfoilModels(await response.json());
-}
-
-export function readCachedTinfoilModels(): CloudModelDefinition[] {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-export function writeCachedTinfoilModels(models: CloudModelDefinition[]): void {
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(models));
-  } catch {
-    // Cache is best-effort; a failed write just means a refetch next launch.
-  }
+  return mergeTinfoilModels(await fetchModels());
 }

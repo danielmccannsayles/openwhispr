@@ -455,7 +455,35 @@
     {
       "id": "tinfoil",
       "name": "Tinfoil",
-      "models": []
+      "models": [
+        {
+          "id": "glm-5-2",
+          "name": "GLM-5.2",
+          "description": "Private agentic engineering model in secure enclaves, 384K context",
+          "tokenParam": "max_tokens",
+          "supportsTemperature": true,
+          "descriptionKey": "models.descriptions.cloud.tinfoil_glm_5_2",
+          "supportsThinking": true
+        },
+        {
+          "id": "gpt-oss-120b",
+          "name": "GPT-OSS 120B",
+          "description": "Private open-weight reasoning model with tool use, 131K context",
+          "tokenParam": "max_tokens",
+          "supportsTemperature": true,
+          "descriptionKey": "models.descriptions.cloud.tinfoil_gpt_oss_120b",
+          "supportsThinking": true
+        },
+        {
+          "id": "gemma4-31b",
+          "name": "Gemma 4 31B",
+          "description": "Private multilingual reasoning model with tool calling, 256K context",
+          "tokenParam": "max_tokens",
+          "supportsTemperature": true,
+          "descriptionKey": "models.descriptions.cloud.tinfoil_gemma4_31b",
+          "supportsThinking": true
+        }
+      ]
     }
   ],
   "enterpriseProviders": [

@@ -1,6 +1,5 @@
 import modelDataRaw from "./modelRegistryData.json";
 import { isCloudCleanupMode, getSettings } from "../stores/settingsStore";
-import { readCachedTinfoilModels } from "./tinfoilModels";
 
 export interface ModelDefinition {
   id: string;
@@ -117,15 +116,6 @@ const modelData: ModelRegistryData = modelDataRaw as ModelRegistryData;
 
 function getTinfoilCloudProvider(): CloudProviderData | undefined {
   return modelData.cloudProviders.find((provider) => provider.id === "tinfoil");
-}
-
-// Tinfoil's models are fetched from its /v1/models endpoint, but getOpenAiApiConfig
-// and getCloudModel read the registry synchronously. Seed from the last good fetch
-// so a cold start doesn't fall through to the wrong defaults for these ids
-// (max_completion_tokens and no temperature, rather than max_tokens with one).
-const seededTinfoilProvider = getTinfoilCloudProvider();
-if (seededTinfoilProvider) {
-  seededTinfoilProvider.models = readCachedTinfoilModels();
 }
 
 function createPromptFormatter(template: string): (text: string, systemPrompt: string) => string {
@@ -285,7 +275,12 @@ export function getTinfoilModels(): CloudModelDefinition[] {
   return getTinfoilCloudProvider()?.models ?? [];
 }
 
-/** Replaces Tinfoil's model list with a freshly fetched one. */
+/**
+ * Replaces the bundled Tinfoil model list with a freshly fetched one. The list
+ * has to land in the registry, not just the picker: getOpenAiApiConfig and
+ * getCloudModel read it synchronously to decide token params and thinking
+ * suppression, and fall through to OpenAI's defaults for ids they don't know.
+ */
 export function applyTinfoilModels(models: CloudModelDefinition[]): void {
   const provider = getTinfoilCloudProvider();
   if (provider) {
