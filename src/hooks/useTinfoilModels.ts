@@ -11,11 +11,12 @@ interface UseTinfoilModelsResult {
 }
 
 /**
- * Refreshes Tinfoil's model list into the registry and re-renders with it. The
- * registry keeps its last known list when the fetch fails, so the picker stays
- * usable offline.
+ * Refreshes Tinfoil's model list into the registry and re-renders with it. Pass
+ * `enabled` only while the user is looking at Tinfoil, so nobody else's settings
+ * visit reaches out to it. The registry keeps its last known list when the fetch
+ * fails, so the picker stays usable offline.
  */
-export function useTinfoilModels(): UseTinfoilModelsResult {
+export function useTinfoilModels(enabled: boolean): UseTinfoilModelsResult {
   const [models, setModels] = useState<CloudModelDefinition[]>(() => getTinfoilModels());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,8 +55,9 @@ export function useTinfoilModels(): UseTinfoilModelsResult {
   }, []);
 
   useEffect(() => {
+    if (!enabled) return;
     refresh();
-  }, [refresh]);
+  }, [enabled, refresh]);
 
   return { models, loading, error, refresh };
 }

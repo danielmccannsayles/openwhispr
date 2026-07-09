@@ -18,6 +18,7 @@ import { API_ENDPOINTS } from "../config/constants";
 import logger from "../utils/logger";
 import { REASONING_PROVIDERS } from "../models/ModelRegistry";
 import { useTinfoilModels } from "../hooks/useTinfoilModels";
+import { pickDefaultTinfoilModel } from "../models/tinfoilModels";
 import { modelRegistry } from "../models/ModelRegistry";
 import { getProviderIcon, isMonochromeProvider } from "../utils/providerIcons";
 import { createExternalLinkHandler } from "../utils/externalLinks";
@@ -330,7 +331,7 @@ export default function ReasoningModelSelector({
     models: tinfoilModels,
     loading: tinfoilModelsLoading,
     error: tinfoilModelsError,
-  } = useTinfoilModels();
+  } = useTinfoilModels(selectedCloudProvider === "tinfoil");
 
   const effectiveMode = mode || selectedMode;
 
@@ -451,6 +452,12 @@ export default function ReasoningModelSelector({
 
       if (selectedCloudProvider === "custom") return;
 
+      if (selectedCloudProvider === "tinfoil") {
+        const defaultModel = pickDefaultTinfoilModel(tinfoilModels);
+        if (defaultModel) setReasoningModel(defaultModel.id);
+        return;
+      }
+
       const provider =
         REASONING_PROVIDERS[selectedCloudProvider as keyof typeof REASONING_PROVIDERS];
       if (provider?.models?.length > 0) {
@@ -477,6 +484,14 @@ export default function ReasoningModelSelector({
     setLocalReasoningProvider(provider);
 
     if (provider === "custom") return;
+
+    // Tinfoil's list order isn't a preference, and the refresh may not have
+    // landed yet, so don't let either decide which model the user starts on.
+    if (provider === "tinfoil") {
+      const defaultModel = pickDefaultTinfoilModel(tinfoilModels);
+      if (defaultModel) setReasoningModel(defaultModel.id);
+      return;
+    }
 
     const providerData = REASONING_PROVIDERS[provider as keyof typeof REASONING_PROVIDERS];
     if (providerData?.models?.length > 0) {
@@ -679,7 +694,7 @@ export default function ReasoningModelSelector({
                   </h4>
                   {selectedCloudProvider === "tinfoil" && (
                     <>
-                      {tinfoilModelsLoading && selectedCloudModels.length === 0 && (
+                      {tinfoilModelsLoading && (
                         <p className="text-xs text-primary">
                           {t("reasoning.custom.fetchingModels")}
                         </p>

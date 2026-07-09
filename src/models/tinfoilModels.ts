@@ -44,6 +44,19 @@ export function mergeTinfoilModels(catalog: TinfoilCatalogModel[]): CloudModelDe
   }));
 }
 
+const DEFAULT_MODEL_ID = "glm-5-2";
+
+/**
+ * The model to select when the user hasn't chosen one, or when the one they
+ * chose is gone. Tinfoil's list order isn't a preference and can change without
+ * an app release, so don't let it decide this.
+ */
+export function pickDefaultTinfoilModel(
+  models: CloudModelDefinition[]
+): CloudModelDefinition | undefined {
+  return models.find((model) => model.id === DEFAULT_MODEL_ID) ?? models[0];
+}
+
 /**
  * Moves any scope still pointing at a model Tinfoil has retired onto one it
  * still serves — otherwise the next request is a 404 the user can't diagnose.
@@ -55,7 +68,8 @@ function reconcileSelectedModels(
 ): void {
   const available = new Set(models.map((model) => model.id));
   const settings = getSettings() as unknown as Record<string, unknown>;
-  const replacement = models[0];
+  const replacement = pickDefaultTinfoilModel(models);
+  if (!replacement) return;
   const announced = new Set<string>();
 
   for (const scope of Object.values(INFERENCE_SCOPES)) {
