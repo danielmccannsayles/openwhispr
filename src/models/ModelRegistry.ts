@@ -322,14 +322,9 @@ export function getModelProvider(modelId: string): string {
 
   const storedProvider = getSettings().cleanupProvider;
 
-  if (storedProvider === "custom") {
-    return "custom";
-  }
-
-  // Tinfoil's model list is fetched at runtime, so a selected id may not be in
-  // the registry yet. Trust the stored provider rather than guessing from the id.
-  if (storedProvider === "tinfoil") {
-    return "tinfoil";
+  // Trust the provider the user chose over the heuristic
+  if (storedProvider === "custom" || storedProvider === "tinfoil") {
+    return storedProvider;
   }
 
   if (isEnterpriseProvider(storedProvider)) {

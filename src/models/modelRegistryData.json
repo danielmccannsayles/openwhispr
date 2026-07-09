@@ -457,6 +457,15 @@
       "name": "Tinfoil",
       "models": [
         {
+          "id": "kimi-k2-6",
+          "name": "Kimi K2.6",
+          "description": "Private long-horizon coding and multimodal model, 256K context",
+          "tokenParam": "max_tokens",
+          "supportsTemperature": true,
+          "descriptionKey": "models.descriptions.cloud.tinfoil_kimi_k2_6",
+          "supportsThinking": true
+        },
+        {
           "id": "glm-5-2",
           "name": "GLM-5.2",
           "description": "Private agentic engineering model in secure enclaves, 384K context",

@@ -37,9 +37,6 @@ export const tinfoilProvider: InferenceProvider = {
         )
       );
 
-    // Every Tinfoil model takes max_tokens and supports temperature, so don't
-    // resolve these through the registry — its model list is fetched at runtime
-    // and a cold start would otherwise fall back to the wrong defaults.
     const requestBody: Record<string, unknown> = {
       model,
       messages,

@@ -11,11 +11,6 @@ export interface CachedTinfoilModels {
 
 const EMPTY: CachedTinfoilModels = { models: [], fetchedAt: 0 };
 
-/**
- * The last list Tinfoil gave us, and when. Persisting both means a launch still
- * knows every model the user has seen, and doesn't refetch a list it pulled a
- * minute before the app restarted.
- */
 export function readCachedTinfoilModels(): CachedTinfoilModels {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
@@ -32,9 +27,7 @@ export function readCachedTinfoilModels(): CachedTinfoilModels {
 export function writeCachedTinfoilModels(models: CloudModelDefinition[]): void {
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify({ models, fetchedAt: Date.now() }));
-  } catch {
-    // Cache is best-effort; a failed write just means a refetch next launch.
-  }
+  } catch {}
 }
 
 export function isCachedListFresh(cached: CachedTinfoilModels): boolean {

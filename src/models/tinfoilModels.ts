@@ -18,8 +18,7 @@ export interface TinfoilCatalogModel {
 
 /**
  * Curated, translated descriptions keyed by model id. The endpoint only returns
- * English copy, so prefer these where we have them and fall back to the
- * endpoint's own description for models we haven't written one for.
+ * English copy
  */
 const DESCRIPTION_KEYS: Record<string, string> = {
   "deepseek-v4-pro": "models.descriptions.cloud.tinfoil_deepseek_v4_pro",
@@ -31,10 +30,7 @@ const DESCRIPTION_KEYS: Record<string, string> = {
 };
 
 /**
- * Turns Tinfoil's live list into registry entries. The endpoint is the source
- * of truth for which models exist and what they do, so models it doesn't list
- * drop out and models we've never heard of appear. Only the description is
- * ours: every Tinfoil model takes max_tokens and supports temperature.
+ * Turns Tinfoil's live list into registry entries.
  */
 function toCloudModels(catalog: TinfoilCatalogModel[]): CloudModelDefinition[] {
   return catalog.map((model) => ({
@@ -50,11 +46,6 @@ function toCloudModels(catalog: TinfoilCatalogModel[]): CloudModelDefinition[] {
 
 const DEFAULT_MODEL_ID = "glm-5-2";
 
-/**
- * The model to select when the user hasn't chosen one, or when the one they
- * chose is gone. Tinfoil's list order isn't a preference and can change without
- * an app release, so don't let it decide this.
- */
 export function pickDefaultTinfoilModel(
   models: CloudModelDefinition[]
 ): CloudModelDefinition | undefined {
@@ -103,9 +94,8 @@ async function fetchAndApply(): Promise<CloudModelDefinition[]> {
   }
 
   const models = toCloudModels(await fetchModels());
-  // An empty list would mean Tinfoil serves no chat models at all. Far more
-  // likely something upstream broke, so keep what we already have.
   if (models.length === 0) {
+    // Far more likely something upstream broke, so keep what we already have.
     throw new Error("Tinfoil returned no chat models");
   }
 
@@ -126,8 +116,7 @@ export function isTinfoilListFresh(): boolean {
  * call before every request: a list we fetched recently short-circuits without
  * touching the network, and the timestamp is persisted so a restart doesn't
  * refetch a list we pulled a minute ago. Rejects when Tinfoil can't be reached,
- * leaving the registry as it was — an unreachable endpoint says nothing about
- * which models still exist.
+ * leaving the registry as it was.
  */
 export function refreshTinfoilModels(): Promise<CloudModelDefinition[]> {
   const cached = readCachedTinfoilModels();
