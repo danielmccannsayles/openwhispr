@@ -1,6 +1,5 @@
 import type { InferenceProvider } from "./types";
 import { TOKEN_LIMITS } from "../../../config/constants";
-import { getOpenAiApiConfig } from "../../../models/ModelRegistry";
 import { withRetry, createApiRetryStrategy } from "../../../utils/retry";
 import logger from "../../../utils/logger";
 import { applyThinkingSuppression } from "../thinkingSuppression";
@@ -26,7 +25,6 @@ export const tinfoilProvider: InferenceProvider = {
       { role: "user", content: userContent },
     ];
 
-    const apiConfig = getOpenAiApiConfig(model);
     const maxTokens =
       config.maxTokens ||
       Math.max(
@@ -39,15 +37,15 @@ export const tinfoilProvider: InferenceProvider = {
         )
       );
 
+    // Every Tinfoil model takes max_tokens and supports temperature, so don't
+    // resolve these through the registry — its model list is fetched at runtime
+    // and a cold start would otherwise fall back to the wrong defaults.
     const requestBody: Record<string, unknown> = {
       model,
       messages,
-      [apiConfig.tokenParam]: maxTokens,
+      max_tokens: maxTokens,
+      temperature: config.temperature ?? (config.systemPrompt ? 0.3 : 0),
     };
-
-    if (apiConfig.supportsTemperature) {
-      requestBody.temperature = config.temperature ?? (config.systemPrompt ? 0.3 : 0);
-    }
 
     applyThinkingSuppression(requestBody, model, "tinfoil", config);
 
