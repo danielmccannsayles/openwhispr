@@ -237,7 +237,7 @@ export function isEnterpriseProvider(value: unknown): value is EnterpriseProvide
   return typeof value === "string" && (ENTERPRISE_PROVIDERS as readonly string[]).includes(value);
 }
 
-function toReasoningModel(m: CloudModelDefinition): ReasoningModel {
+export function toReasoningModel(m: CloudModelDefinition): ReasoningModel {
   return {
     value: m.id,
     label: m.name,

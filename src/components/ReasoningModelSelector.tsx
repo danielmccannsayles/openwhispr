@@ -16,7 +16,7 @@ import { ProviderTabs } from "./ui/ProviderTabs";
 import OpenAICompatiblePanel from "./OpenAICompatiblePanel";
 import { API_ENDPOINTS } from "../config/constants";
 import logger from "../utils/logger";
-import { REASONING_PROVIDERS } from "../models/ModelRegistry";
+import { REASONING_PROVIDERS, toReasoningModel } from "../models/ModelRegistry";
 import { useTinfoilModels } from "../hooks/useTinfoilModels";
 import { pickDefaultTinfoilModel } from "../models/tinfoilModels";
 import { modelRegistry } from "../models/ModelRegistry";
@@ -379,25 +379,15 @@ export default function ReasoningModelSelector({
     const iconUrl = getProviderIcon(selectedCloudProvider);
     const invertInDark = isMonochromeProvider(selectedCloudProvider);
 
-    // The registry is still the source of truth; refreshTinfoilModels writes
-    // this same list into it. The hook hands it back so React re-renders when
-    // it changes, which mutating the registry alone wouldn't do.
-    if (selectedCloudProvider === "tinfoil") {
-      return tinfoilModels.map((model) => ({
-        value: model.id,
-        label: model.name,
-        description: model.descriptionKey
-          ? t(model.descriptionKey, { defaultValue: model.description })
-          : model.description,
-        icon: iconUrl,
-        invertInDark,
-      }));
-    }
+    // Tinfoil's list is dynamic. Redraw when it changes
+    const models =
+      selectedCloudProvider === "tinfoil"
+        ? tinfoilModels.map(toReasoningModel)
+        : REASONING_PROVIDERS[selectedCloudProvider as keyof typeof REASONING_PROVIDERS]?.models;
 
-    const provider = REASONING_PROVIDERS[selectedCloudProvider as keyof typeof REASONING_PROVIDERS];
-    if (!provider?.models) return [];
+    if (!models) return [];
 
-    return provider.models.map((model) => ({
+    return models.map((model) => ({
       ...model,
       description: model.descriptionKey
         ? t(model.descriptionKey, { defaultValue: model.description })
