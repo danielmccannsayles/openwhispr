@@ -225,8 +225,6 @@ interface TranscriptionSectionProps {
   }) => void;
 }
 
-// Providers that forward the live-preview flag (see STREAMING_PROVIDERS in audioManager.js).
-
 function TranscriptionSection({
   isSignedIn,
   startOnboarding,
