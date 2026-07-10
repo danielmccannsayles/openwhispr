@@ -2113,8 +2113,6 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
         return trimmedModel || "whisper-1";
       }
 
-      // Only reached when we can't stream; the streaming half of Voxtral never
-      // gets here, since it's chosen by the realtime provider rather than by id.
       if (provider === "tinfoil") {
         return getBatchTranscriptionModel("tinfoil");
       }
