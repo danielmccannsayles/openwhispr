@@ -2115,7 +2115,8 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
         return trimmedModel || "whisper-1";
       }
 
-      // Only ever consulted on the batch path — Tinfoil's selectable model streams.
+      // Only reached when we can't stream; the streaming half of Voxtral never
+      // gets here, since it's chosen by the realtime provider rather than by id.
       if (provider === "tinfoil") {
         return getBatchTranscriptionModel("tinfoil");
       }
@@ -2158,8 +2159,8 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
     const currentProvider = s.cloudTranscriptionProvider || "openai";
 
     // Above the try below, whose catch turns any failure into the OpenAI endpoint.
-    // Tinfoil has no HTTP endpoint we may call directly — it goes through the
-    // attested proxy in main — and resolving one here would leak the key.
+    // Tinfoil's endpoint is only reachable over the attested transport in main,
+    // so there is no URL to hand back here — returning one would leak the key.
     if (currentProvider === "tinfoil") {
       throw new Error("Tinfoil transcription must go through the attested main-process proxy");
     }

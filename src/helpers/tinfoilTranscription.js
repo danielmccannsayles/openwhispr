@@ -5,8 +5,9 @@ const { tinfoilSecureFetch } = require("./tinfoilSecureClient");
 const TINFOIL_TRANSCRIPTION_PATH = "/v1/audio/transcriptions";
 
 /**
- * Tinfoil's dictation model is realtime-only, so every batch path — retry, audio
- * upload, and any fallback out of a streaming session — needs a different model.
+ * "Voxtral" is one choice in the picker, but Tinfoil serves it as two models:
+ * voxtral-mini-4b-realtime streams over /v1/realtime, and this one handles every
+ * path that can't stream — retry, audio upload, and fallbacks out of a session.
  */
 function getBatchModel() {
   const provider = (modelRegistryData.transcriptionProviders || []).find((p) => p.id === "tinfoil");
