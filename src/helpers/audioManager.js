@@ -1681,9 +1681,9 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
       const apiKey = await this.getAPIKey();
       const optimizedAudio = audioBlob;
 
-      // Tinfoil verifies the enclave from Node, so it never uses the fetch below.
-      // Intercept before an endpoint is resolved — the generic path would send the
-      // Tinfoil key to whatever base URL it picked.
+      // Runs above endpoint resolution because that defaults to OpenAI, and would
+      // send the Tinfoil key there. Unnecessary once proxied providers (mistral,
+      // xai, corti, tinfoil) dispatch before this function resolves any endpoint.
       if (provider === "tinfoil") {
         if (!window.electronAPI?.proxyTinfoilTranscription) {
           throw new Error("Tinfoil transcription is unavailable in this window");
@@ -2154,9 +2154,9 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
     const s = getSettings();
     const currentProvider = s.cloudTranscriptionProvider || "openai";
 
-    // Above the try below, whose catch turns any failure into the OpenAI endpoint.
-    // Tinfoil's endpoint is only reachable over the attested transport in main,
-    // so there is no URL to hand back here — returning one would leak the key.
+    // Second guard on the same problem: every failure here, and every unrecognized
+    // provider, resolves to OpenAI. Sits above the try because the catch swallows
+    // throws into that same default. Delete once proxied providers never reach here.
     if (currentProvider === "tinfoil") {
       throw new Error("Tinfoil transcription must go through the attested main-process proxy");
     }
