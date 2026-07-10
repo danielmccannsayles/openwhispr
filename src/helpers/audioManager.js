@@ -2702,8 +2702,21 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
       this.streamingProcessor = new AudioWorkletNode(audioContext, "pcm-streaming-processor");
       const provider = this.getStreamingProvider();
 
+      // INSTRUMENTATION (#tinfoil-empty-text): is the mic producing silence?
+      this._streamPeak = 0;
+      this._streamSumSq = 0;
+      this._streamSamples = 0;
+
       this.streamingProcessor.port.onmessage = (event) => {
         if (!this.isStreaming) return;
+        const samples = new Int16Array(event.data);
+        for (let i = 0; i < samples.length; i++) {
+          const n = samples[i] / 0x7fff;
+          this._streamSumSq += n * n;
+          const abs = Math.abs(n);
+          if (abs > this._streamPeak) this._streamPeak = abs;
+        }
+        this._streamSamples += samples.length;
         provider.send(event.data);
       };
 
@@ -3009,6 +3022,13 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
         terminateRoundTripMs: Math.round(tTerminate - tForceEndpoint),
         totalStopMs: Math.round(tTerminate - t0),
         textLength: finalText.length,
+        // INSTRUMENTATION (#tinfoil-empty-text): was the captured audio actually silent?
+        audioBytesSent: stopResult?.audioBytesSent ?? null,
+        micSamples: this._streamSamples,
+        micPeak: this._streamPeak?.toFixed(4),
+        micRms: this._streamSamples
+          ? Math.sqrt(this._streamSumSq / this._streamSamples).toFixed(5)
+          : null,
       },
       "streaming"
     );

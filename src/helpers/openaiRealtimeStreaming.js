@@ -85,6 +85,9 @@ class OpenAIRealtimeStreaming {
     this.completedSegments = [];
     this.currentPartial = "";
     this.audioBytesSent = 0;
+    this.audioChunksDropped = 0;
+    this.droppedReadyState = null;
+    this.serverEvents = {};
     this.speechStartedAt = null;
 
     const url = "wss://api.openai.com/v1/realtime?intent=transcription";
@@ -137,10 +140,13 @@ class OpenAIRealtimeStreaming {
       this.ws.on("close", (code, reason) => {
         const wasActive = this.isConnected;
         this.isConnecting = false;
-        debugLogger.debug("OpenAI Realtime WebSocket closed", {
+        // INSTRUMENTATION (#tinfoil-empty-text): did the socket die mid-recording?
+        debugLogger.warn("OpenAI Realtime WebSocket closed", {
           code,
           reason: reason?.toString(),
           wasActive,
+          audioBytesSent: this.audioBytesSent,
+          isDisconnecting: this.isDisconnecting,
         });
         if (this.pendingReject) {
           this.pendingReject(new Error(`WebSocket closed before ready (code: ${code})`));
@@ -158,6 +164,10 @@ class OpenAIRealtimeStreaming {
   handleMessage(data) {
     try {
       const event = JSON.parse(data.toString());
+
+      // INSTRUMENTATION (#tinfoil-empty-text): what did the enclave actually say back?
+      this.serverEvents = this.serverEvents || {};
+      this.serverEvents[event.type] = (this.serverEvents[event.type] || 0) + 1;
 
       switch (event.type) {
         case "session.created": {
@@ -349,6 +359,10 @@ class OpenAIRealtimeStreaming {
         const copy = Buffer.from(pcmBuffer);
         this.coldStartBuffer.push(copy);
         this.coldStartBufferSize += copy.length;
+      } else {
+        // INSTRUMENTATION (#tinfoil-empty-text): audio thrown away, nobody checks the return.
+        this.audioChunksDropped = (this.audioChunksDropped || 0) + 1;
+        this.droppedReadyState = this.ws?.readyState ?? null;
       }
       return false;
     }
@@ -378,11 +392,16 @@ class OpenAIRealtimeStreaming {
   }
 
   async disconnect() {
-    debugLogger.debug("OpenAI Realtime disconnect", {
+    // INSTRUMENTATION (#tinfoil-empty-text): warn, not debug — this is the decisive line.
+    debugLogger.warn("OpenAI Realtime disconnect", {
       audioBytesSent: this.audioBytesSent,
+      audioChunksDropped: this.audioChunksDropped || 0,
+      droppedReadyState: this.droppedReadyState ?? null,
       segments: this.completedSegments.length,
       textLength: this.getFullTranscript().length,
       readyState: this.ws?.readyState,
+      isConnected: this.isConnected,
+      serverEvents: this.serverEvents || {},
     });
 
     if (!this.ws) return { text: this.getFullTranscript() };
