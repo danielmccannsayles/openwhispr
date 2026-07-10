@@ -3111,20 +3111,25 @@ registerProcessor("pcm-streaming-processor", PCMStreamingProcessor);
       }
     }
 
-    // If streaming produced no text, fall back to batch transcription
-    // (batch fallback records usage server-side via /api/transcribe)
+    // If streaming produced no text, fall back to batch transcription. Route by
+    // provider: a BYOK recording must not be sent to OpenWhispr Cloud, which for
+    // Tinfoil would mean audio the user chose an enclave for leaving it entirely.
     let usedBatchFallback = false;
     let batchWarning = null;
     if (!finalText && durationSeconds > 2 && fallbackBlob?.size > 0) {
+      const s = getSettings();
+      const useCloud =
+        !s.useLocalWhisper && s.cloudTranscriptionMode === "openwhispr" && s.isSignedIn;
       logger.info(
         "Streaming produced no text, falling back to batch transcription",
-        { durationSeconds, blobSize: fallbackBlob.size },
+        { durationSeconds, blobSize: fallbackBlob.size, target: useCloud ? "openwhispr" : "byok" },
         "streaming"
       );
       try {
-        const batchResult = await this.processWithOpenWhisprCloud(fallbackBlob, {
-          durationSeconds,
-        });
+        // Cloud records usage server-side via /api/transcribe; BYOK has no metering.
+        const batchResult = useCloud
+          ? await this.processWithOpenWhisprCloud(fallbackBlob, { durationSeconds })
+          : await this.processWithOpenAIAPI(fallbackBlob, { durationSeconds });
         if (batchResult?.text) {
           finalText = batchResult.text;
           usedBatchFallback = true;
