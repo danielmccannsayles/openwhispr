@@ -167,12 +167,12 @@ const STREAMING_PROVIDERS = {
     onSessionEnd: (cb) => window.electronAPI.onCortiSessionEnd(cb),
   },
   "tinfoil-realtime": {
-    warmup: (opts) =>
-      window.electronAPI.dictationRealtimeWarmup({
-        ...opts,
-        provider: "tinfoil-realtime",
-        preview: true,
-      }),
+    // No socket warmup. Tinfoil expires a realtime session that receives no audio
+    // for ~60s, then answers pings and control messages while silently discarding
+    // audio — a warm socket is worse than none. Each recording dials a fresh one.
+    // Repro: tf-test/infra/realtime_zombie. Everything else warmup does (mic
+    // driver, AudioWorklet) still runs; only the connection is skipped.
+    warmup: async () => ({ success: true }),
     start: (opts) =>
       window.electronAPI.dictationRealtimeStart({
         ...opts,

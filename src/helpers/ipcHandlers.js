@@ -5922,7 +5922,11 @@ class IPCHandlers {
       try {
         clearDictationIdleTimer();
         this._dictationPreviewEnabled = !!options.preview;
-        if (!this._dictationStreaming?.isConnected) await connectDictationStreaming(event, options);
+        // A Tinfoil socket that has sat idle can no longer transcribe, and says so
+        // in no way we can detect, so never reuse one. See tf-test/infra/realtime_zombie.
+        const reusable =
+          options.provider !== "tinfoil-realtime" && this._dictationStreaming?.isConnected;
+        if (!reusable) await connectDictationStreaming(event, options);
         return { success: true };
       } catch (err) {
         return streamingStartFailure(err);
